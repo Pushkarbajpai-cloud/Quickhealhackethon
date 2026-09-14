@@ -177,7 +177,7 @@ export default function SidebarLayout() {
           <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 px-1">
             <span className="flex items-center gap-1.5">
               <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-400' : 'bg-red-500'}`} />
-              {connected ? 'FastAPI 8000' : 'Offline'}
+              {connected ? 'Render Node' : 'Offline'}
             </span>
             <span className="text-cyan-400">Block #{latestBlockHeight}</span>
           </div>
