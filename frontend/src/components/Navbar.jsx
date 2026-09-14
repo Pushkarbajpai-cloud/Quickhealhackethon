@@ -60,7 +60,7 @@ export default function Navbar({
                     ? isBreached ? 'bg-red-500' : 'bg-emerald-400 animate-pulse'
                     : 'bg-gray-600'
                 }`} />
-                {connected ? 'FastAPI Render Node' : 'Backend Disconnected'}
+                {connected ? 'Browser Engine Active' : 'Engine Offline'}
               </span>
               <span className="text-gray-600">•</span>
               <span className="text-[11px] font-mono text-gray-400">SHA-256 Merkle Verification</span>

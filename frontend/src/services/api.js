@@ -1,90 +1,113 @@
-const API_BASE = import.meta.env.VITE_API_URL || "https://quickhealhackethon.onrender.com";
+/**
+ * 100% Client-Side API Layer
+ * 
+ * Replaces remote FastAPI/Render network calls with native client-side
+ * storage and cryptographic verification. Zero external server dependencies.
+ */
+
+import { 
+  validateLedger, 
+  MerkleTree 
+} from '../utils/blockchain';
+import {
+  loadLedgerState,
+  saveLedgerState,
+  resetLedgerState,
+  ingestLogsToStorage,
+  tamperStoredLog,
+  getStoredProof,
+} from '../utils/storage';
 
 export const api = {
   // Fetch logs with pagination & filtering
   async getLogs(limit = 100, offset = 0, blockHeight = null) {
-    let url = `${API_BASE}/logs?limit=${limit}&offset=${offset}`;
+    const state = loadLedgerState();
+    let filtered = [...state.logs];
+
     if (blockHeight !== null && blockHeight !== undefined) {
-      url += `&block_height=${blockHeight}`;
+      filtered = filtered.filter((l) => l.block_height === parseInt(blockHeight));
     }
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Failed to fetch logs: ${res.statusText}`);
-    return await res.json();
+
+    // Newest first by default
+    filtered.sort((a, b) => b.id - a.id);
+    const paginated = filtered.slice(offset, offset + limit);
+
+    return {
+      total: filtered.length,
+      limit,
+      offset,
+      logs: paginated,
+    };
   },
 
   // Real-time SOC validation
   async getValidation() {
-    const res = await fetch(`${API_BASE}/validate`);
-    if (!res.ok) throw new Error(`Validation check failed: ${res.statusText}`);
-    return await res.json();
+    const state = loadLedgerState();
+    return validateLedger(state.blocks, state.logs);
   },
 
   // Fetch all blocks
   async getBlocks() {
-    const res = await fetch(`${API_BASE}/blocks`);
-    if (!res.ok) throw new Error(`Failed to fetch blocks: ${res.statusText}`);
-    return await res.json();
+    const state = loadLedgerState();
+    // Attach contained logs to each block for Explorer inspection
+    return state.blocks.map((block) => {
+      const containedLogs = state.logs
+        .filter((l) => l.block_height === block.height)
+        .sort((a, b) => (a.leaf_index ?? 0) - (b.leaf_index ?? 0));
+      return {
+        ...block,
+        contained_logs: containedLogs,
+      };
+    });
   },
 
   // Get Merkle proof for a specific log
   async getProof(logId) {
-    const res = await fetch(`${API_BASE}/logs/${logId}/proof`);
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || `Failed to fetch proof: ${res.statusText}`);
-    }
-    return await res.json();
+    return getStoredProof(logId);
   },
 
-  // Verify a log + proof against backend
+  // Verify a log + proof against Merkle Root
   async verifyProof(payload) {
-    const res = await fetch(`${API_BASE}/logs/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error(`Verification failed: ${res.statusText}`);
-    return await res.json();
+    const { leaf_hash, proof, merkle_root } = payload;
+    const isValid = MerkleTree.verifyProof(leaf_hash, proof, merkle_root);
+    return {
+      verified: isValid,
+      leaf_hash,
+      calculated_merkle_root: merkle_root,
+      status: isValid ? "CRYPTOGRAPHICALLY_VERIFIED" : "VERIFICATION_FAILED",
+    };
   },
 
   // Rogue Admin Simulation (tamper with database)
   async simulateTamper(payload = {}) {
-    const res = await fetch(`${API_BASE}/simulate-tamper`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Tamper simulation failed");
-    }
-    return await res.json();
+    return tamperStoredLog(payload);
   },
 
   // Ingest logs
   async ingestLogs(events) {
-    const res = await fetch(`${API_BASE}/logs/ingest`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(events),
-    });
-    if (!res.ok) throw new Error(`Failed to ingest logs: ${res.statusText}`);
-    return await res.json();
+    return ingestLogsToStorage(events);
   },
 
   // Reset demo
   async resetDemo() {
-    const res = await fetch(`${API_BASE}/reset-demo`, {
-      method: "POST",
-    });
-    if (!res.ok) throw new Error(`Reset demo failed: ${res.statusText}`);
-    return await res.json();
+    const fresh = resetLedgerState();
+    return {
+      status: "RESET_SUCCESSFUL",
+      message: "Audit database and blockchain reset to Genesis state in localStorage.",
+      current_chain_height: fresh.blocks[fresh.blocks.length - 1].height,
+    };
   },
 
   // System stats
   async getStats() {
-    const res = await fetch(`${API_BASE}/stats`);
-    if (!res.ok) throw new Error(`Failed to fetch stats: ${res.statusText}`);
-    return await res.json();
+    const state = loadLedgerState();
+    const unbatched = state.logs.filter((l) => l.block_height === null).length;
+    return {
+      total_logs: state.logs.length,
+      unbatched_logs: unbatched,
+      total_blocks: state.blocks.length,
+      latest_block_height: state.blocks[state.blocks.length - 1].height,
+      chain_valid: true,
+    };
   }
 };
