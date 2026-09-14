@@ -1,10 +1,12 @@
 import datetime
+import os
 from typing import Any, Dict, List, Optional, Union
 import uuid
 
 from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+import uvicorn
 
 from crypto.ledger import Block, BlockchainLedger
 from crypto.merkle_tree import MerkleTree, canonical_json, sha256
@@ -21,10 +23,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Enable CORS for frontend or local integration
+# Enable CORS for deployed frontend and local testing
+origins = [
+    "https://quickhealhackethonv20.vercel.app",
+    "http://localhost:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -453,5 +460,11 @@ def reset_demo():
         "message": "Audit database and blockchain reset to Genesis block.",
         "current_chain_height": ledger.get_latest_block().height,
     }
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
+
 
 
